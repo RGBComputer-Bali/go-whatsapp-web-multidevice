@@ -2,7 +2,9 @@ package validations
 
 import (
 	"context"
+	"math"
 	"mime/multipart"
+	"strconv"
 	"testing"
 
 	domainMessage "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/message"
@@ -66,6 +68,7 @@ func TestValidateSendImage(t *testing.T) {
 		Size:     100,
 		Header:   map[string][]string{"Content-Type": {"image/png"}},
 	}
+	replyMessageID := "3EB089B9D6ADD58153C561"
 
 	type args struct {
 		request domainSend.ImageRequest
@@ -81,8 +84,9 @@ func TestValidateSendImage(t *testing.T) {
 				BaseRequest: domainSend.BaseRequest{
 					Phone: "1728937129312@s.whatsapp.net",
 				},
-				Caption: "Hello this is testing",
-				Image:   image,
+				Caption:        "Hello this is testing",
+				ReplyMessageID: &replyMessageID,
+				Image:          image,
 			}},
 			err: nil,
 		},
@@ -136,6 +140,7 @@ func TestValidateSendFile(t *testing.T) {
 		Size:     100,
 		Header:   map[string][]string{"Content-Type": {"image/png"}},
 	}
+	replyMessageID := "3EB089B9D6ADD58153C561"
 
 	type args struct {
 		request domainSend.FileRequest
@@ -151,7 +156,8 @@ func TestValidateSendFile(t *testing.T) {
 				BaseRequest: domainSend.BaseRequest{
 					Phone: "1728937129312@s.whatsapp.net",
 				},
-				File: file,
+				File:           file,
+				ReplyMessageID: &replyMessageID,
 			}},
 			err: nil,
 		},
@@ -191,6 +197,7 @@ func TestValidateSendVideo(t *testing.T) {
 		Size:     100,
 		Header:   map[string][]string{"Content-Type": {"video/mp4"}},
 	}
+	replyMessageID := "3EB089B9D6ADD58153C561"
 
 	type args struct {
 		request domainSend.VideoRequest
@@ -206,10 +213,11 @@ func TestValidateSendVideo(t *testing.T) {
 				BaseRequest: domainSend.BaseRequest{
 					Phone: "1728937129312@s.whatsapp.net",
 				},
-				Caption:  "simple caption",
-				Video:    file,
-				ViewOnce: false,
-				Compress: false,
+				Caption:        "simple caption",
+				ReplyMessageID: &replyMessageID,
+				Video:          file,
+				ViewOnce:       false,
+				Compress:       false,
 			}},
 			err: nil,
 		},
@@ -521,6 +529,17 @@ func TestValidateSendContact(t *testing.T) {
 			}},
 			err: pkgError.ValidationError("contact_phone: cannot be blank."),
 		},
+		{
+			name: "should error with plus-only contact phone",
+			args: args{request: domainSend.ContactRequest{
+				BaseRequest: domainSend.BaseRequest{
+					Phone: "1728937129312@s.whatsapp.net",
+				},
+				ContactName:  "Aldino",
+				ContactPhone: "+",
+			}},
+			err: pkgError.ValidationError("contact phone number cannot be empty"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -622,6 +641,7 @@ func TestValidateSendAudio(t *testing.T) {
 		Size:     100,
 		Header:   map[string][]string{"Content-Type": {"audio/mp3"}},
 	}
+	replyMessageID := "3EB089B9D6ADD58153C561"
 
 	type args struct {
 		request domainSend.AudioRequest
@@ -637,7 +657,8 @@ func TestValidateSendAudio(t *testing.T) {
 				BaseRequest: domainSend.BaseRequest{
 					Phone: "1728937129312@s.whatsapp.net",
 				},
-				Audio: audio,
+				Audio:          audio,
+				ReplyMessageID: &replyMessageID,
 			}},
 			err: nil,
 		},
@@ -774,6 +795,20 @@ func TestValidateSendPoll(t *testing.T) {
 			assert.Equal(t, tt.err, err)
 		})
 	}
+}
+
+func TestValidateSendPollRejectsMaxAnswerOutsideUint32(t *testing.T) {
+	if strconv.IntSize < 64 {
+		t.Skip("int cannot represent a value above uint32 on this architecture")
+	}
+	tooLarge := uint64(math.MaxUint32) + 1
+	err := ValidateSendPoll(context.Background(), domainSend.PollRequest{
+		BaseRequest: domainSend.BaseRequest{Phone: "1728937129312@s.whatsapp.net"},
+		Question:    "Question?",
+		Options:     []string{"One"},
+		MaxAnswer:   int(tooLarge),
+	})
+	assert.Equal(t, pkgError.ValidationError("max_answer: must be no greater than 4294967295."), err)
 }
 
 func TestValidateSendPresence(t *testing.T) {
@@ -1107,6 +1142,49 @@ func TestValidateSendAudio_WithDuration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateSendAudio(context.Background(), tt.args.request)
+			assert.Equal(t, tt.err, err)
+		})
+	}
+}
+
+func TestValidateForwardMessage(t *testing.T) {
+	type args struct {
+		request domainSend.ForwardRequest
+	}
+	tests := []struct {
+		name string
+		args args
+		err  any
+	}{
+		{
+			name: "should success normal condition",
+			args: args{request: domainSend.ForwardRequest{
+				MessageID: "3EB0123456789ABCDEF",
+				Phone:     "1728937129312@s.whatsapp.net",
+			}},
+			err: nil,
+		},
+		{
+			name: "should error with empty phone",
+			args: args{request: domainSend.ForwardRequest{
+				MessageID: "3EB0123456789ABCDEF",
+				Phone:     "",
+			}},
+			err: pkgError.ValidationError("phone: cannot be blank."),
+		},
+		{
+			name: "should error with empty message id",
+			args: args{request: domainSend.ForwardRequest{
+				MessageID: "",
+				Phone:     "1728937129312@s.whatsapp.net",
+			}},
+			err: pkgError.ValidationError("message_id: cannot be blank."),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateForwardMessage(context.Background(), tt.args.request)
 			assert.Equal(t, tt.err, err)
 		})
 	}

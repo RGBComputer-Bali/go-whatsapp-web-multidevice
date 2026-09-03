@@ -53,7 +53,7 @@ func ValidateReactMessage(ctx context.Context, request domainMessage.ReactionReq
 	err := validation.ValidateStructWithContext(ctx, &request,
 		validation.Field(&request.Phone, validation.Required),
 		validation.Field(&request.MessageID, validation.Required),
-		validation.Field(&request.Emoji, validation.Required),
+		validation.Field(&request.Emoji),
 	)
 
 	if err != nil {
@@ -80,7 +80,7 @@ func ValidateStarMessage(ctx context.Context, request domainMessage.StarRequest)
 	err := validation.ValidateStructWithContext(ctx, &request,
 		validation.Field(&request.Phone, validation.Required),
 		validation.Field(&request.MessageID, validation.Required),
-		validation.Field(&request.IsStarred, validation.Required),
+		validation.Field(&request.IsStarred),
 	)
 
 	if err != nil {
